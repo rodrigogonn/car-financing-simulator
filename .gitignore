@@ -1,0 +1,17 @@
+node_modules/
+artifacts/
+data/
+dist/
+.env
+*.log
+*.tmp
+.DS_Store
+coverage/
+lein-repl-history
+*.local.*
+*.swp
+*.swo
+*.orig
+*.tsbuildinfo
+
+
