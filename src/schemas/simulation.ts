@@ -24,7 +24,6 @@ export enum ScenarioType {
 }
 
 export const zSimpleSimulation = z.object({
-  vehiclePrice: z.number(),
   downPayment: z.number(),
   downPaymentIndicator: z.nativeEnum(ScenarioType),
   plans: z.array(zFinancingPlan),
@@ -46,6 +45,8 @@ export const zSimulationResult = z.object({
 export type SimulationResult = z.infer<typeof zSimulationResult>;
 
 export const zCreateSimulationRequest = z.object({
+  id: z.string(),
+  partnerId: z.string(),
   input: zSimulationInput,
   callbackUrl: z.string().url(),
 });
@@ -68,5 +69,6 @@ export const zCallbackPayload = z.object({
       message: z.string(),
     })
     .optional(),
+  failedMediaId: z.string().optional(),
 });
 export type CallbackPayload = z.infer<typeof zCallbackPayload>;

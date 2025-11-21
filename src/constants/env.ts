@@ -36,4 +36,6 @@ export const env = {
   SERVICE_BASIC_AUTH: basicEncode(process.env.SERVICE_BASIC_AUTH || ''),
   // Auth Basic para chamar o backend no callback (formato user:pass no .env, aqui já encodado)
   BACKEND_BASIC_AUTH: basicEncode(process.env.BACKEND_BASIC_AUTH || ''),
+  // URL do backend (ex: http://localhost:3000)
+  BACKEND_URL: required('BACKEND_URL'),
 };

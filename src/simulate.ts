@@ -14,7 +14,7 @@ class SimulationStepError extends Error {
   public readonly step: string;
   public readonly causeError: unknown;
   constructor(step: string, causeError: unknown) {
-    super(`Erro ao realizar ${step}`);
+    super(`Erro ao ${step}`);
     this.step = step;
     this.causeError = causeError;
   }
@@ -85,8 +85,7 @@ async function typeWithMask(
 async function performLogin(
   page: Page,
   cpf: string,
-  senha: string,
-  artifactsDir: string
+  senha: string
 ): Promise<void> {
   log('Iniciando fluxo de login...');
   const currentUrl = page.url();
@@ -102,14 +101,14 @@ async function performLogin(
   const usernameCombined = page.locator(
     'input[name="username"], #username, input[autocomplete="username"]'
   );
-  await usernameCombined.first().waitFor({ state: 'visible', timeout: 12_000 });
-  await usernameCombined.first().fill(cpf, { timeout: 5_000 });
+  await usernameCombined.first().waitFor({ state: 'visible', timeout: 30_000 });
+  await usernameCombined.first().fill(cpf, { timeout: 10_000 });
 
   const passwordCombined = page.locator(
     'input[name="password"], #password, input[type="password"], input[autocomplete="current-password"], input[autocomplete="password"]'
   );
-  await passwordCombined.first().waitFor({ state: 'visible', timeout: 12_000 });
-  await passwordCombined.first().fill(senha, { timeout: 5_000 });
+  await passwordCombined.first().waitFor({ state: 'visible', timeout: 30_000 });
+  await passwordCombined.first().fill(senha, { timeout: 10_000 });
 
   const acessarBtn = page.getByRole('button', { name: /Acessar/i }).first();
   if (await acessarBtn.count().then((c) => c > 0)) {
@@ -118,7 +117,6 @@ async function performLogin(
       page.waitForLoadState('load').catch(() => {}),
     ]);
   } else {
-    await saveDebug(page, artifactsDir, '02c-auth-no-acessar');
     throw new Error('Não foi possível localizar o botão "Acessar".');
   }
 }
@@ -272,14 +270,6 @@ async function waitForSimulationResults(page: Page): Promise<void> {
 }
 
 async function extractSimulation(page: Page): Promise<SimpleSimulation> {
-  const cabecalho = page
-    .getByRole('heading', { level: 3 })
-    .filter({ hasText: /R\$/i })
-    .first();
-  const cabTxt = await cabecalho.innerText();
-  const vvMatch = cabTxt.match(/R\$\s*[\d.,]+/);
-  const vehiclePrice = vvMatch ? parseBRL(vvMatch[0]) : 0;
-
   const entradaInput = page.getByRole('textbox', { name: /Entrada/i }).first();
   const entradaText = (await entradaInput.inputValue()).trim();
   const downPayment = parseBRL(entradaText);
@@ -302,7 +292,6 @@ async function extractSimulation(page: Page): Promise<SimpleSimulation> {
     plans.push({ label });
   }
   return {
-    vehiclePrice,
     downPayment,
     downPaymentIndicator: indicator,
     plans,
@@ -389,10 +378,11 @@ async function adjustEntryToMinimumIfNeeded(
 }
 
 export async function simulate(
-  input: SimulationInput
+  input: SimulationInput,
+  simulationId: string
 ): Promise<SimulationResult> {
   const headless = env.HEADLESS;
-  const artifactsDir = 'artifacts';
+  const artifactsDir = join('artifacts', simulationId);
   let context: BrowserContext | null = null;
   let browser: Browser | null = null;
   let page: Page | null = null;
@@ -419,7 +409,7 @@ export async function simulate(
 
     try {
       currentStep = 'login no portal';
-      await performLogin(page, env.C6AUTO_CPF, env.C6AUTO_SENHA, artifactsDir);
+      await performLogin(page, env.C6AUTO_CPF, env.C6AUTO_SENHA);
       currentStep = 'aguardar pós-login';
       await waitForPostLogin(page);
       currentStep = 'carregar dashboard';
@@ -456,6 +446,7 @@ export async function simulate(
     } catch (e) {
       throw new SimulationStepError(currentStep, e);
     }
+
     const suggested = await extractSimulation(page);
 
     const scenarios: Scenario[] = [];
