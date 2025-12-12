@@ -1,0 +1,152 @@
+name: Deploy Simulador
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  REGION: 'us-central1'
+  TERRAFORM_VERSION: '1.6.0'
+  BACKEND_URL: 'https://automind-backend.rodrigohub.com'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      terraform_changed: ${{ steps.changes.outputs.terraform_changed }}
+      app_changed: ${{ steps.changes.outputs.app_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "terraform_changed=true" >> $GITHUB_OUTPUT
+            echo "app_changed=true" >> $GITHUB_OUTPUT
+          else
+            # Get changed files between commits
+            if [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+            else
+              # Fallback: compare with previous commit
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            fi
+            
+            if echo "$CHANGED_FILES" | grep -q '^terraform/'; then
+              echo "terraform_changed=true" >> $GITHUB_OUTPUT
+            else
+              echo "terraform_changed=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if echo "$CHANGED_FILES" | grep -qE '^(src/|package\.json|tsconfig\.json|Dockerfile)'; then
+              echo "app_changed=true" >> $GITHUB_OUTPUT
+            else
+              echo "app_changed=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  build:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.app_changed == 'true'
+    outputs:
+      image_tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get project ID from terraform.tfvars
+        id: project_id
+        run: |
+          PROJECT_ID=$(grep '^project_id' terraform/production/terraform.tfvars | cut -d'"' -f2)
+          echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Set image tag
+        id: image
+        run: |
+          IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/simulador/simulador:${{ github.sha }}"
+          echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.tag }}
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/simulador/simulador:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  terraform:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build]
+    if: |
+      always() && (
+        needs.detect-changes.outputs.terraform_changed == 'true' ||
+        (needs.detect-changes.outputs.app_changed == 'true' && (needs.build.result == 'success' || needs.build.result == 'skipped'))
+      )
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        env:
+          TF_VAR_c6auto_cpf: ${{ secrets.C6AUTO_CPF }}
+          TF_VAR_c6auto_senha: ${{ secrets.C6AUTO_SENHA }}
+          TF_VAR_service_basic_auth: ${{ secrets.SERVICE_BASIC_AUTH }}
+          TF_VAR_backend_basic_auth: ${{ secrets.BACKEND_BASIC_AUTH }}
+          TF_VAR_backend_url: ${{ env.BACKEND_URL }}
+          TF_VAR_docker_image: ${{ needs.detect-changes.outputs.app_changed == 'true' && needs.build.outputs.image_tag || '' }}
+        run: terraform plan -var-file=production/terraform.tfvars
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        env:
+          TF_VAR_c6auto_cpf: ${{ secrets.C6AUTO_CPF }}
+          TF_VAR_c6auto_senha: ${{ secrets.C6AUTO_SENHA }}
+          TF_VAR_service_basic_auth: ${{ secrets.SERVICE_BASIC_AUTH }}
+          TF_VAR_backend_basic_auth: ${{ secrets.BACKEND_BASIC_AUTH }}
+          TF_VAR_backend_url: ${{ env.BACKEND_URL }}
+          TF_VAR_docker_image: ${{ needs.detect-changes.outputs.app_changed == 'true' && needs.build.outputs.image_tag || '' }}
+        run: terraform apply -auto-approve -var-file=production/terraform.tfvars
+
+      - name: Output Service URL
+        working-directory: ./terraform
+        run: terraform output -raw service_url || echo "Service URL not available yet"

@@ -93,5 +93,5 @@ export function createApp(): express.Express {
 const app = createApp();
 const port = env.PORT;
 app.listen(port, () => {
-  console.log(`[http] simulador ouvindo em :${port}`);
+  console.log(`[http] simulador ouvindo em: ${port}`);
 });

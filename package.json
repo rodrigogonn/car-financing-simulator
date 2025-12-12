@@ -7,7 +7,12 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --ext .ts",
-    "playwright:install": "npx --yes playwright install --with-deps"
+    "start": "node dist/server.js",
+    "playwright:install": "npx --yes playwright install --with-deps",
+    "docker:up": "docker compose up --attach automind-simulador",
+    "docker:build": "docker compose build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f automind-simulador"
   },
   "dependencies": {
     "axios": "^1.13.2",

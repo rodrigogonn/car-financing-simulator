@@ -3,6 +3,7 @@ artifacts/
 data/
 dist/
 .env
+.env.production
 *.log
 *.tmp
 .DS_Store
