@@ -16,11 +16,6 @@ resource "google_cloud_run_service" "simulator" {
         }
 
         env {
-          name  = "PORT"
-          value = "4001"
-        }
-
-        env {
           name  = "C6AUTO_CPF"
           value = var.c6auto_cpf
         }
