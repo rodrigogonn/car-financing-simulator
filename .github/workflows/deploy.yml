@@ -98,17 +98,6 @@ jobs:
         working-directory: ./terraform
         run: terraform init
 
-      - name: Terraform Plan
-        working-directory: ./terraform
-        env:
-          TF_VAR_c6auto_cpf: ${{ secrets.C6AUTO_CPF }}
-          TF_VAR_c6auto_senha: ${{ secrets.C6AUTO_SENHA }}
-          TF_VAR_service_basic_auth: ${{ secrets.SERVICE_BASIC_AUTH }}
-          TF_VAR_backend_basic_auth: ${{ secrets.BACKEND_BASIC_AUTH }}
-          TF_VAR_backend_url: ${{ env.BACKEND_URL }}
-          TF_VAR_docker_image: ${{ needs.build.outputs.image_tag }}
-        run: terraform plan -var-file=production/terraform.tfvars
-
       - name: Terraform Apply
         working-directory: ./terraform
         env:
